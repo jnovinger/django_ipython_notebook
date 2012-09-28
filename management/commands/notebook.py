@@ -1,28 +1,46 @@
-import os
-from django.core.management.base import BaseCommand
 from optparse import make_option
 
-DEFAULT_PORT = "8888"
+from django.core.management.base import BaseCommand, CommandError
+
+from IPython.frontend.html.notebook.notebookapp import NotebookApp
+
 
 class Command(BaseCommand):
+    """
+    A Django management command to load up a IPython notebook with Django
+    settings loaded.
+    """
     args = '[optional port number, or ipaddr:port]'
-    option_list = BaseCommand.option_list
+    option_list = BaseCommand.option_list + (
+        make_option('--no-mathjax',
+            action='store_true',
+            dest='no_mathjax',
+            default=False,
+            help='Don\'t load MathJax JS, in case there is no network.'),
+    )
     help = "Runs the IPython notebook."
     requires_model_validation = False
 
-    def handle(self, addrport='', *args, **options):
+    def handle(self, addrport=None, *args, **options):
         if args:
             raise CommandError('Usage is notebook %s' % self.args)
-        
-        if not addrport:
-            self.addr = ''
-            self.port = DEFAULT_PORT
-        # TODO Pass port and address to IPython.
 
-        # Can't work out how to embed ipython in this python process so just
-        # launch another process.
-        code_to_run = """import settings
-import django.core.management
-django.core.management.setup_environ(settings)
-"""
-        os.system('ipython notebook -c "%s"' % code_to_run)
+        if addrport:
+            if ':' in addrport:
+                ip_addr, port = addrport.split(':')
+            else:
+                ip_addr = '127.0.0.1'
+                port = addrport
+
+        app = NotebookApp.instance()
+
+        if 'ip_addr' in locals() and 'port' in locals():
+            app.ip = ip_addr
+            app.port = int(port)
+
+        if options.get('no_mathjax', False):
+            app.enable_mathjax = False
+            del options['no_mathjax']
+
+        app.initialize()
+        app.start()
